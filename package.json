@@ -5,6 +5,7 @@
     "private": true,
     "scripts": {
         "postinstall": "npm install --prefix frontend",
+        "build": "npm run build --prefix frontend",
         "start": "cd frontend && npm run build && npx -y wrangler pages dev dist --port 5173"
     }
 }
