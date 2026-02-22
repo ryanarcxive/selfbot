@@ -1,3 +1,7 @@
 name = "self-bot-dashboard"
 compatibility_date = "2024-02-22"
 pages_build_output_dir = "frontend/dist"
+
+[[kv_namespaces]]
+binding = "CHRONOS_KV"
+id = "local-dev-id-12345"

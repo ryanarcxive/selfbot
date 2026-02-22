@@ -29,23 +29,37 @@ export default function Form({ onStatusUpdate }) {
         }));
     };
 
-    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+    const [sequenceId, setSequenceId] = useState(null);
+    const pollIntervalRef = React.useRef(null);
 
-    const checkPaused = async () => {
-        while (isPausedRef.current && !isAbortedRef.current) {
-            await sleep(500);
+    // Initial load: Check for ID in URL
+    React.useEffect(() => {
+        const queryParams = new URLSearchParams(window.location.search);
+        const idFromUrl = queryParams.get('id');
+
+        if (idFromUrl) {
+            setSequenceId(idFromUrl);
+            setStatus('running'); // Assume running until first poll returns
+            onStatusUpdate('info', 'Reconnecting to background sequence...');
+
+            // Trigger immediate poll, then start interval
+            pollStatus(idFromUrl);
+            pollIntervalRef.current = setInterval(() => pollStatus(idFromUrl), 3000);
         }
-    };
+
+        return () => {
+            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+        };
+    }, []);
 
     const startTask = async (e) => {
         if (e) e.preventDefault();
 
-        isPausedRef.current = false;
-        isAbortedRef.current = false;
-
         setStatus('running');
         setErrorMsg('');
         setSentCount(0);
+        setSequenceId(null);
+        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
 
         if (Number(formData.minDelayMs) >= Number(formData.maxDelayMs)) {
             setStatus('error');
@@ -54,91 +68,91 @@ export default function Form({ onStatusUpdate }) {
         }
 
         try {
-            onStatusUpdate('info', 'Sequence initiated! Starting dispatch...');
+            onStatusUpdate('info', 'Initiating background sequence...');
 
-            let currentSent = 0;
+            const response = await fetch('/api/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    token: formData.token,
+                    channelId: formData.channelId,
+                    message: formData.message,
+                    count: formData.count,
+                    minDelayMs: formData.minDelayMs,
+                    maxDelayMs: formData.maxDelayMs,
+                    randomize: formData.randomize
+                })
+            });
 
-            for (let i = 0; i < formData.count; i++) {
-                await checkPaused();
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Failed to start sequence');
 
-                if (isAbortedRef.current) {
-                    throw new Error("Sequence aborted by user.");
-                }
+            setSequenceId(data.sequenceId);
+            onStatusUpdate('info', 'Sequence dispatched! ID: ' + data.sequenceId);
 
-                const response = await fetch('/api/send-message', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        token: formData.token,
-                        channelId: formData.channelId,
-                        message: formData.message,
-                        randomize: formData.randomize
-                    })
-                });
-
-                const rawText = await response.text();
-
-                let data;
-                try {
-                    data = JSON.parse(rawText);
-                } catch (e) {
-                    console.error("Failed to parse JSON. Raw response from Cloudflare:", rawText);
-                    throw new Error(`Cloudflare Edge Error: ${response.status} ${response.statusText}`);
-                }
-
-                if (!response.ok) {
-                    throw new Error(data.error || 'Failed to send message');
-                }
-
-                currentSent++;
-                setSentCount(currentSent);
-
-                if (i < formData.count - 1) {
-                    const randomDelay = Math.floor(Math.random() * (Number(formData.maxDelayMs) - Number(formData.minDelayMs) + 1) + Number(formData.minDelayMs));
-                    onStatusUpdate('info', `Sent message ${currentSent}/${formData.count}. Waiting ${(randomDelay / 1000).toFixed(1)}s...`);
-
-                    let slept = 0;
-                    while (slept < randomDelay) {
-                        if (isAbortedRef.current) throw new Error("Sequence aborted by user.");
-                        await checkPaused();
-                        await sleep(100);
-                        slept += 100;
-                    }
-                }
-            }
-
-            setStatus('completed');
-            onStatusUpdate('success', `Sequence completed! Dispatched ${currentSent} messages.`);
+            // Start Polling
+            pollIntervalRef.current = setInterval(() => pollStatus(data.sequenceId), 3000);
 
         } catch (err) {
-            setStatus(isAbortedRef.current ? 'idle' : 'error');
-            if (!isAbortedRef.current) {
-                setErrorMsg(err.message);
-                onStatusUpdate('error', err.message);
-            } else {
-                onStatusUpdate('info', err.message);
-            }
+            setStatus('error');
+            setErrorMsg(err.message);
+            onStatusUpdate('error', err.message);
         }
     };
 
-    const handlePauseToggle = () => {
-        isPausedRef.current = !isPausedRef.current;
-        setStatus(isPausedRef.current ? 'paused' : 'running');
-        if (isPausedRef.current) {
-            onStatusUpdate('info', 'Sequence paused. Ready to resume.');
-        } else {
-            onStatusUpdate('info', 'Sequence resumed! Dispatching...');
+    const pollStatus = async (id) => {
+        try {
+            const res = await fetch(`/api/status?id=${id}`);
+            const data = await res.json();
+
+            if (!res.ok) throw new Error(data.error);
+
+            setSentCount(data.sentCount);
+            setStatus(data.status); // running, paused, aborted, completed, error
+
+            if (data.status === 'completed') {
+                clearInterval(pollIntervalRef.current);
+                onStatusUpdate('success', `Sequence completed! Dispatched ${data.sentCount} messages.`);
+            } else if (data.status === 'error') {
+                clearInterval(pollIntervalRef.current);
+                setErrorMsg(data.errorData);
+                onStatusUpdate('error', data.errorData);
+            } else if (data.status === 'aborted') {
+                clearInterval(pollIntervalRef.current);
+                onStatusUpdate('info', 'Sequence aborted manually.');
+            }
+
+        } catch (err) {
+            console.error("Polling error", err);
         }
+    };
+
+    const updateRemoteStatus = async (newStatus) => {
+        if (!sequenceId) return;
+        try {
+            await fetch('/api/update-status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: sequenceId, status: newStatus })
+            });
+            // Don't set react status here, let the next poll cycle grab the true source of truth
+        } catch (e) { console.error("Failed to update status"); }
+    }
+
+    const handlePauseToggle = () => {
+        const nextStatus = status === 'paused' ? 'running' : 'paused';
+        updateRemoteStatus(nextStatus);
+        onStatusUpdate('info', `Requesting sequence to ${nextStatus}...`);
     };
 
     const handleAbort = () => {
-        isAbortedRef.current = true;
-        isPausedRef.current = false;
-        onStatusUpdate('info', 'Sequence aborted manually.');
+        updateRemoteStatus('aborted');
+        onStatusUpdate('info', 'Requesting sequence abortion...');
     };
 
     const isRunning = status === 'running' || status === 'paused';
     const progressPercent = typeof formData.count === 'number' && formData.count > 0
+
         ? Math.round((sentCount / formData.count) * 100)
         : 0;
 
@@ -259,8 +273,14 @@ export default function Form({ onStatusUpdate }) {
                 <div className="mb-6 flex-col" style={{ alignItems: 'center', color: 'var(--accent)' }}>
                     <RefreshCw className="mb-4" size={32} style={{ animation: status === 'paused' ? 'none' : 'spin 2s linear infinite', opacity: status === 'paused' ? 0.5 : 1 }} />
                     <p style={{ color: 'var(--text-main)', fontWeight: 600 }}>
-                        {status === 'paused' ? 'Sequence Paused' : 'Executing sequence...'}
+                        {status === 'paused' ? 'Sequence Paused' : 'Executing background sequence...'}
                     </p>
+
+                    {sequenceId && (
+                        <p style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginTop: '0.5rem', fontFamily: 'monospace' }}>
+                            ID: {sequenceId}
+                        </p>
+                    )}
 
                     {/* Progress Bar Container */}
                     <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', marginTop: '1rem', overflow: 'hidden' }}>
