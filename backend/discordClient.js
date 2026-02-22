@@ -36,7 +36,7 @@ async function getRandomQuote() {
 /**
  * Starts a sequence of messages
  */
-async function startSendingMessages({ token, channelId, message, count, delayMs, taskId, randomize, onProgress, onComplete, onError }) {
+async function startSendingMessages({ token, channelId, message, count, minDelayMs, maxDelayMs, taskId, randomize, onProgress, onComplete, onError }) {
     const client = new Client({ checkUpdate: false });
     let isStopped = false;
 
@@ -85,8 +85,9 @@ async function startSendingMessages({ token, channelId, message, count, delayMs,
 
             // Add delay unless it's the last message
             if (i < count - 1 && !isStopped) {
-                console.log(`[Backend Debug] Waiting ${delayMs}ms...`);
-                await sleep(delayMs);
+                const randomDelay = Math.floor(Math.random() * (maxDelayMs - minDelayMs + 1) + minDelayMs);
+                console.log(`[Backend Debug] Waiting randomized delay of ${randomDelay}ms...`);
+                await sleep(randomDelay);
             }
         }
 

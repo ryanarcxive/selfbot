@@ -7,7 +7,8 @@ export default function Form({ onStatusUpdate }) {
         channelId: '',
         message: '',
         count: 10,
-        delayMs: 2000,
+        minDelayMs: 2000,
+        maxDelayMs: 5000,
         randomize: false
     });
 
@@ -31,6 +32,12 @@ export default function Form({ onStatusUpdate }) {
         setErrorMsg('');
         setProgress(0);
         setTotal(formData.count);
+
+        if (Number(formData.minDelayMs) >= Number(formData.maxDelayMs)) {
+            setStatus('error');
+            setErrorMsg('Max delay must be greater than Min delay.');
+            return;
+        }
 
         try {
             const response = await fetch('http://localhost:3000/api/send-message', {
@@ -172,8 +179,8 @@ export default function Form({ onStatusUpdate }) {
                 />
             </div>
 
-            <div style={{ display: 'flex', gap: '1rem' }}>
-                <div className="input-group" style={{ flex: 1 }}>
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                <div className="input-group" style={{ flex: 1.5 }}>
                     <label htmlFor="count">Send Count</label>
                     <input
                         type="number"
@@ -189,14 +196,29 @@ export default function Form({ onStatusUpdate }) {
                 </div>
 
                 <div className="input-group" style={{ flex: 1 }}>
-                    <label htmlFor="delayMs">Delay (ms)</label>
+                    <label htmlFor="minDelayMs">Min Delay (ms)</label>
                     <input
                         type="number"
-                        id="delayMs"
-                        name="delayMs"
+                        id="minDelayMs"
+                        name="minDelayMs"
                         min="500"
                         step="100"
-                        value={formData.delayMs}
+                        value={formData.minDelayMs}
+                        onChange={handleChange}
+                        required
+                        disabled={isRunning}
+                    />
+                </div>
+
+                <div className="input-group" style={{ flex: 1 }}>
+                    <label htmlFor="maxDelayMs">Max Delay (ms)</label>
+                    <input
+                        type="number"
+                        id="maxDelayMs"
+                        name="maxDelayMs"
+                        min="500"
+                        step="100"
+                        value={formData.maxDelayMs}
                         onChange={handleChange}
                         required
                         disabled={isRunning}
