@@ -1,0 +1,26 @@
+{
+  "name": "self-bot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "concurrently \"npm run start:backend\" \"npm run start:frontend\"",
+    "start:backend": "cd backend && node server.js",
+    "start:frontend": "cd frontend && npm run dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ryanarcxive/selfbot.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/ryanarcxive/selfbot/issues"
+  },
+  "homepage": "https://github.com/ryanarcxive/selfbot#readme",
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
