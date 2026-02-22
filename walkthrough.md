@@ -14,11 +14,11 @@ I have successfully built a premium, full-stack Discord message automation suite
 * **Real-time Status Sync**: The form has built-in HTTP polling to dynamically show you exactly how many messages have been successfully dispatched, updating the progress bar in real-time.
 * **Abort Capability**: You can cancel an ongoing message sequence midway directly from the UI.
 
-### 2. Robust Backend (Node.js + Express + Discord.js-selfbot-v13)
-* **API Endpoints**: The server exposes `/api/send-message`, `/api/status/:taskId`, and `/api/stop/:taskId` endpoints.
+### 2. Robust Backend (Cloudflare Pages Functions)
+* **Serverless Architecture**: The backend has been completely migrated to Cloudflare Pages Functions (`functions/api/send-message.js`). There is no persistent Node.js server.
+* **Direct REST API**: Replaced `discord.js` with raw, optimized HTTP `fetch` calls directly to the Discord API (`api/v9/channels/{id}/messages`). 
 * **Meaningful Quote Generation**: If "Randomize Message Payload" is checked, the backend dynamically fetches meaningful quotes from `api.quotable.io` on the fly. If rate-limited, it automatically falls back to an internal list of famous quotes.
-* **Temporary Connections**: It securely spins up a Discord.js client on-the-fly, authenticates with the provided token, executes the message delay sequence, and cleanly logs out to prevent memory leaks.
-* **Error Handling**: Gracefully catches authentication errors or invalid channel IDs and pipes those errors back to the frontend UI alerts.
+* **Stateless Execution**: Executed sequence requests are entirely stateless to conform to Cloudflare's serverless edge environment.
 
 ## How to Run the App
 
@@ -29,12 +29,12 @@ I have successfully built a premium, full-stack Discord message automation suite
    ```
    *This single command will automatically navigate into the frontend and backend folders to install everything you need.*
 
-2. **Start Both Servers:**
+2. **Start the Local Cloudflare Emulator:**
    In the same `Self Bot` root folder, run:
    ```bash
    npm start
    ```
-   *This uses `concurrently` to spin up both the Vite frontend and the Express backend simultaneously.*
+   *This command will build the Vite frontend and automatically bind the Cloudflare `wrangler` CLI to simulate the edge deployment environment natively.*
 
 3. **Access the Dashboard:**
    Open your browser and navigate to the address shown by Vite (usually `http://localhost:5173`).

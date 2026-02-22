@@ -1,27 +1,10 @@
 {
-  "name": "self-bot",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "postinstall": "concurrently \"npm install --prefix backend\" \"npm install --prefix frontend\"",
-    "start": "concurrently \"npm run start:backend\" \"npm run start:frontend\"",
-    "start:backend": "cd backend && node server.js",
-    "start:frontend": "cd frontend && npm run dev"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/ryanarcxive/selfbot.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "bugs": {
-    "url": "https://github.com/ryanarcxive/selfbot/issues"
-  },
-  "homepage": "https://github.com/ryanarcxive/selfbot#readme",
-  "devDependencies": {
-    "concurrently": "^9.2.1"
-  }
+    "name": "self-bot",
+    "version": "1.0.0",
+    "description": "Discord Automation Dashboard",
+    "private": true,
+    "scripts": {
+        "postinstall": "npm install --prefix frontend",
+        "start": "cd frontend && npm run build && npx -y wrangler pages dev dist --port 5173"
+    }
 }

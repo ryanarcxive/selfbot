@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Send, StopCircle, RefreshCw, AlertCircle, CheckCircle2, Dices } from 'lucide-react';
+import { Send, RefreshCw, AlertCircle, CheckCircle2, Dices } from 'lucide-react';
 
 export default function Form({ onStatusUpdate }) {
     const [formData, setFormData] = useState({
@@ -13,10 +13,8 @@ export default function Form({ onStatusUpdate }) {
     });
 
     const [status, setStatus] = useState('idle'); // idle, running, completed, error
-    const [taskId, setTaskId] = useState(null);
-    const [progress, setProgress] = useState(0);
-    const [total, setTotal] = useState(0);
     const [errorMsg, setErrorMsg] = useState('');
+    const [sentCount, setSentCount] = useState(0);
 
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
@@ -30,8 +28,7 @@ export default function Form({ onStatusUpdate }) {
         e.preventDefault();
         setStatus('running');
         setErrorMsg('');
-        setProgress(0);
-        setTotal(formData.count);
+        setSentCount(0);
 
         if (Number(formData.minDelayMs) >= Number(formData.maxDelayMs)) {
             setStatus('error');
@@ -40,7 +37,8 @@ export default function Form({ onStatusUpdate }) {
         }
 
         try {
-            const response = await fetch('http://localhost:3000/api/send-message', {
+            onStatusUpdate('info', 'Sequence initiated! Waiting for completion...');
+            const response = await fetch('/api/send-message', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(formData)
@@ -52,64 +50,15 @@ export default function Form({ onStatusUpdate }) {
                 throw new Error(data.error || 'Failed to start sequence');
             }
 
-            setTaskId(data.taskId);
-            pollStatus(data.taskId);
-            onStatusUpdate('success', 'Sequence initiated successfully!');
+            setSentCount(data.sent || 0);
+            setStatus('completed');
+            onStatusUpdate('success', `Sequence completed! Dispatched ${data.sent || 0} messages.`);
 
         } catch (err) {
             setStatus('error');
             setErrorMsg(err.message);
             onStatusUpdate('error', err.message);
         }
-    };
-
-    const stopTask = async () => {
-        if (!taskId) return;
-
-        try {
-            await fetch(`http://localhost:3000/api/stop/${taskId}`, { method: 'POST' });
-            setStatus('idle');
-            onStatusUpdate('info', 'Sequence stopped gracefully.');
-        } catch (err) {
-            console.error('Failed to stop task:', err);
-        }
-    };
-
-    const pollStatus = async (id) => {
-        const interval = setInterval(async () => {
-            try {
-                const response = await fetch(`http://localhost:3000/api/status/${id}`);
-                // If task is not found, it might have been deleted or never existed on restart
-                if (!response.ok) {
-                    clearInterval(interval);
-                    setStatus('idle');
-                    return;
-                }
-
-                const data = await response.json();
-
-                if (data.status === 'running') {
-                    setProgress(data.sent || 0);
-                    setTotal(data.total || formData.count);
-                } else if (data.status === 'completed') {
-                    setProgress(data.total || formData.count);
-                    setStatus('completed');
-                    onStatusUpdate('success', 'All messages delivered successfully!');
-                    clearInterval(interval);
-                } else if (data.status === 'error') {
-                    setStatus('error');
-                    setErrorMsg(data.error);
-                    onStatusUpdate('error', `Sequence failed: ${data.error}`);
-                    clearInterval(interval);
-                } else if (data.status === 'stopped') {
-                    setStatus('idle');
-                    clearInterval(interval);
-                }
-            } catch (err) {
-                // Soft fail polling
-                console.warn('Polling error:', err);
-            }
-        }, 1000);
     };
 
     const isRunning = status === 'running';
@@ -231,18 +180,18 @@ export default function Form({ onStatusUpdate }) {
                 <div className="mb-6 flex-col" style={{ alignItems: 'center', color: 'var(--accent)' }}>
                     <RefreshCw className="mb-4" size={32} style={{ animation: 'spin 2s linear infinite' }} />
                     <p style={{ color: 'var(--text-main)', fontWeight: 600 }}>
-                        Sending: {progress} / {total}
+                        Executing sequence...
                     </p>
-                    <div style={{ width: '100%', height: '8px', background: 'var(--input-bg)', borderRadius: '4px', marginTop: '8px', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', background: 'linear-gradient(90deg, var(--primary), var(--accent))', width: `${(progress / total) * 100}%`, transition: 'width 0.3s ease' }}></div>
-                    </div>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-dim)', textAlign: 'center', marginTop: '0.5rem' }}>
+                        Due to stateless architecture, please keep this window open while the sequence completes.
+                    </p>
                 </div>
             )}
 
             {status === 'completed' && (
                 <div className="mb-6 text-center" style={{ color: 'var(--success)' }}>
                     <CheckCircle2 size={48} style={{ margin: '0 auto 1rem' }} />
-                    <p style={{ color: 'var(--success)' }}>Sequence Completed!</p>
+                    <p style={{ color: 'var(--success)' }}>Successfully sent {sentCount} messages!</p>
                 </div>
             )}
 
@@ -254,15 +203,9 @@ export default function Form({ onStatusUpdate }) {
             )}
 
             {/* Controls */}
-            {!isRunning ? (
-                <button type="submit">
-                    <Send size={20} /> Launch Sequence
-                </button>
-            ) : (
-                <button type="button" className="btn-danger" onClick={stopTask}>
-                    <StopCircle size={20} /> Abort Sequence
-                </button>
-            )}
+            <button type="submit" disabled={isRunning} style={{ opacity: isRunning ? 0.5 : 1, cursor: isRunning ? 'not-allowed' : 'pointer' }}>
+                <Send size={20} /> {isRunning ? 'Running...' : 'Launch Sequence'}
+            </button>
 
             <style>{`
         @keyframes spin { 100% { transform: rotate(360deg); } }
