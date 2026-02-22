@@ -12,9 +12,14 @@ export default function Form({ onStatusUpdate }) {
         randomize: false
     });
 
-    const [status, setStatus] = useState('idle'); // idle, running, completed, error
+    const [status, setStatus] = useState('idle'); // idle, running, paused, completed, error
     const [errorMsg, setErrorMsg] = useState('');
     const [sentCount, setSentCount] = useState(0);
+
+    const isPausedRef = React.useRef(false);
+    const isAbortedRef = React.useRef(false);
+
+
 
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
@@ -24,8 +29,20 @@ export default function Form({ onStatusUpdate }) {
         }));
     };
 
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    const checkPaused = async () => {
+        while (isPausedRef.current && !isAbortedRef.current) {
+            await sleep(500);
+        }
+    };
+
     const startTask = async (e) => {
-        e.preventDefault();
+        if (e) e.preventDefault();
+
+        isPausedRef.current = false;
+        isAbortedRef.current = false;
+
         setStatus('running');
         setErrorMsg('');
         setSentCount(0);
@@ -37,39 +54,93 @@ export default function Form({ onStatusUpdate }) {
         }
 
         try {
-            onStatusUpdate('info', 'Sequence initiated! Waiting for completion...');
-            const response = await fetch('/api/send-message', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(formData)
-            });
+            onStatusUpdate('info', 'Sequence initiated! Starting dispatch...');
 
-            const rawText = await response.text();
+            let currentSent = 0;
 
-            let data;
-            try {
-                data = JSON.parse(rawText);
-            } catch (e) {
-                console.error("Failed to parse JSON. Raw response from Cloudflare:", rawText);
-                throw new Error(`Cloudflare Edge Error: ${response.status} ${response.statusText}. Check console for details.`);
+            for (let i = 0; i < formData.count; i++) {
+                await checkPaused();
+
+                if (isAbortedRef.current) {
+                    throw new Error("Sequence aborted by user.");
+                }
+
+                const response = await fetch('/api/send-message', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        token: formData.token,
+                        channelId: formData.channelId,
+                        message: formData.message,
+                        randomize: formData.randomize
+                    })
+                });
+
+                const rawText = await response.text();
+
+                let data;
+                try {
+                    data = JSON.parse(rawText);
+                } catch (e) {
+                    console.error("Failed to parse JSON. Raw response from Cloudflare:", rawText);
+                    throw new Error(`Cloudflare Edge Error: ${response.status} ${response.statusText}`);
+                }
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to send message');
+                }
+
+                currentSent++;
+                setSentCount(currentSent);
+
+                if (i < formData.count - 1) {
+                    const randomDelay = Math.floor(Math.random() * (Number(formData.maxDelayMs) - Number(formData.minDelayMs) + 1) + Number(formData.minDelayMs));
+                    onStatusUpdate('info', `Sent message ${currentSent}/${formData.count}. Waiting ${(randomDelay / 1000).toFixed(1)}s...`);
+
+                    let slept = 0;
+                    while (slept < randomDelay) {
+                        if (isAbortedRef.current) throw new Error("Sequence aborted by user.");
+                        await checkPaused();
+                        await sleep(100);
+                        slept += 100;
+                    }
+                }
             }
 
-            if (!response.ok) {
-                throw new Error(data.error || 'Failed to start sequence');
-            }
-
-            setSentCount(data.sent || 0);
             setStatus('completed');
-            onStatusUpdate('success', `Sequence completed! Dispatched ${data.sent || 0} messages.`);
+            onStatusUpdate('success', `Sequence completed! Dispatched ${currentSent} messages.`);
 
         } catch (err) {
-            setStatus('error');
-            setErrorMsg(err.message);
-            onStatusUpdate('error', err.message);
+            setStatus(isAbortedRef.current ? 'idle' : 'error');
+            if (!isAbortedRef.current) {
+                setErrorMsg(err.message);
+                onStatusUpdate('error', err.message);
+            } else {
+                onStatusUpdate('info', err.message);
+            }
         }
     };
 
-    const isRunning = status === 'running';
+    const handlePauseToggle = () => {
+        isPausedRef.current = !isPausedRef.current;
+        setStatus(isPausedRef.current ? 'paused' : 'running');
+        if (isPausedRef.current) {
+            onStatusUpdate('info', 'Sequence paused. Ready to resume.');
+        } else {
+            onStatusUpdate('info', 'Sequence resumed! Dispatching...');
+        }
+    };
+
+    const handleAbort = () => {
+        isAbortedRef.current = true;
+        isPausedRef.current = false;
+        onStatusUpdate('info', 'Sequence aborted manually.');
+    };
+
+    const isRunning = status === 'running' || status === 'paused';
+    const progressPercent = typeof formData.count === 'number' && formData.count > 0
+        ? Math.round((sentCount / formData.count) * 100)
+        : 0;
 
     return (
         <form className="mt-4 flex-col gap-4" onSubmit={startTask}>
@@ -184,14 +255,24 @@ export default function Form({ onStatusUpdate }) {
             </div>
 
             {/* Status Badges */}
-            {status === 'running' && (
+            {isRunning && (
                 <div className="mb-6 flex-col" style={{ alignItems: 'center', color: 'var(--accent)' }}>
-                    <RefreshCw className="mb-4" size={32} style={{ animation: 'spin 2s linear infinite' }} />
+                    <RefreshCw className="mb-4" size={32} style={{ animation: status === 'paused' ? 'none' : 'spin 2s linear infinite', opacity: status === 'paused' ? 0.5 : 1 }} />
                     <p style={{ color: 'var(--text-main)', fontWeight: 600 }}>
-                        Executing sequence...
+                        {status === 'paused' ? 'Sequence Paused' : 'Executing sequence...'}
                     </p>
+
+                    {/* Progress Bar Container */}
+                    <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', marginTop: '1rem', overflow: 'hidden' }}>
+                        <div style={{
+                            height: '100%',
+                            width: `${progressPercent}%`,
+                            background: 'var(--accent)',
+                            transition: 'width 0.3s ease'
+                        }}></div>
+                    </div>
                     <p style={{ fontSize: '0.8rem', color: 'var(--text-dim)', textAlign: 'center', marginTop: '0.5rem' }}>
-                        Due to stateless architecture, please keep this window open while the sequence completes.
+                        {sentCount} / {formData.count} messages dispatched ({progressPercent}%)
                     </p>
                 </div>
             )}
@@ -211,9 +292,28 @@ export default function Form({ onStatusUpdate }) {
             )}
 
             {/* Controls */}
-            <button type="submit" disabled={isRunning} style={{ opacity: isRunning ? 0.5 : 1, cursor: isRunning ? 'not-allowed' : 'pointer' }}>
-                <Send size={20} /> {isRunning ? 'Running...' : 'Launch Sequence'}
-            </button>
+            {!isRunning ? (
+                <button type="submit">
+                    <Send size={20} /> Launch Sequence
+                </button>
+            ) : (
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                    <button
+                        type="button"
+                        onClick={handlePauseToggle}
+                        style={{ flex: 1, backgroundColor: status === 'paused' ? 'var(--success)' : 'var(--bg-card)' }}
+                    >
+                        {status === 'paused' ? '▶ Resume' : '⏸ Pause'}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleAbort}
+                        style={{ flex: 1, backgroundColor: 'var(--danger)', color: 'white' }}
+                    >
+                        ⏹ Abort Sequence
+                    </button>
+                </div>
+            )}
 
             <style>{`
         @keyframes spin { 100% { transform: rotate(360deg); } }
