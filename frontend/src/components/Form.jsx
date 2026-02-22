@@ -44,7 +44,15 @@ export default function Form({ onStatusUpdate }) {
                 body: JSON.stringify(formData)
             });
 
-            const data = await response.json();
+            const rawText = await response.text();
+
+            let data;
+            try {
+                data = JSON.parse(rawText);
+            } catch (e) {
+                console.error("Failed to parse JSON. Raw response from Cloudflare:", rawText);
+                throw new Error(`Cloudflare Edge Error: ${response.status} ${response.statusText}. Check console for details.`);
+            }
 
             if (!response.ok) {
                 throw new Error(data.error || 'Failed to start sequence');
