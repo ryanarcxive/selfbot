@@ -8,16 +8,29 @@ const activeOperations = new Map();
  */
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const fallbackQuotes = [
+    "The journey of a thousand miles begins with one step.",
+    "That which does not kill us makes us stronger.",
+    "Life is what happens when you're busy making other plans.",
+    "When the going gets tough, the tough get going.",
+    "You must be the change you wish to see in the world.",
+    "You only live once, but if you do it right, once is enough.",
+    "The only impossible journey is the one you never begin."
+];
+
 /**
- * Helper to generate random string
+ * Fetch a meaningful random quote
  */
-function generateRandomText(length = 20) {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 ';
-    let result = '';
-    for (let i = 0; i < length; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length));
+async function getRandomQuote() {
+    try {
+        const response = await fetch('https://api.quotable.io/random');
+        if (!response.ok) throw new Error('API failed');
+        const data = await response.json();
+        return `"${data.content}" — ${data.author}`;
+    } catch (err) {
+        // Fallback if the free API is rate-limited or down
+        return fallbackQuotes[Math.floor(Math.random() * fallbackQuotes.length)];
     }
-    return result.trim() || 'random_message'; // fallback if only spaces
 }
 
 /**
@@ -64,7 +77,7 @@ async function startSendingMessages({ token, channelId, message, count, delayMs,
                 break;
             }
 
-            const payloadToSend = randomize ? generateRandomText(Math.floor(Math.random() * 30) + 10) : message;
+            const payloadToSend = randomize ? await getRandomQuote() : message;
             console.log(`[Backend Debug] Sending message ${i + 1}/${count}: ${payloadToSend}`);
             await channel.send(payloadToSend);
 
