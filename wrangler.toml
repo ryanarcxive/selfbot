@@ -4,4 +4,4 @@ pages_build_output_dir = "frontend/dist"
 
 [[kv_namespaces]]
 binding = "CHRONOS_KV"
-id = "local-dev-id-12345"
+id = "7b3a1afc27e8489b9d121364164b17a1"
