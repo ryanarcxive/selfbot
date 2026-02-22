@@ -13,14 +13,14 @@ app.use(express.json());
 const activeTasks = new Map();
 
 app.post('/api/send-message', async (req, res) => {
-  const { token, channelId, message, count, delayMs = 2000 } = req.body;
+  const { token, channelId, message, count, delayMs = 2000, randomize = false } = req.body;
 
-  if (!token || !channelId || !message || count === undefined) {
+  if (!token || !channelId || (!message && !randomize) || count === undefined) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
   const taskId = Date.now().toString();
-  
+
   try {
     // We launch the process asynchronously
     const taskPromise = startSendingMessages({
@@ -30,6 +30,7 @@ app.post('/api/send-message', async (req, res) => {
       count,
       delayMs,
       taskId,
+      randomize,
       onProgress: (progress) => {
         // You could use Server-Sent Events (SSE) or WebSockets to stream progress
         // Here we just update the in-memory map

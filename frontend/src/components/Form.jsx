@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Send, StopCircle, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Send, StopCircle, RefreshCw, AlertCircle, CheckCircle2, Dices } from 'lucide-react';
 
 export default function Form({ onStatusUpdate }) {
     const [formData, setFormData] = useState({
@@ -7,7 +7,8 @@ export default function Form({ onStatusUpdate }) {
         channelId: '',
         message: '',
         count: 10,
-        delayMs: 2000
+        delayMs: 2000,
+        randomize: false
     });
 
     const [status, setStatus] = useState('idle'); // idle, running, completed, error
@@ -17,8 +18,11 @@ export default function Form({ onStatusUpdate }) {
     const [errorMsg, setErrorMsg] = useState('');
 
     const handleChange = (e) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        const { name, value, type, checked } = e.target;
+        setFormData(prev => ({
+            ...prev,
+            [name]: type === 'checkbox' ? checked : value
+        }));
     };
 
     const startTask = async (e) => {
@@ -140,16 +144,31 @@ export default function Form({ onStatusUpdate }) {
                 />
             </div>
 
-            <div className="input-group">
+            <div className="input-group" style={{ flexDirection: 'row', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <input
+                    type="checkbox"
+                    id="randomize"
+                    name="randomize"
+                    checked={formData.randomize}
+                    onChange={handleChange}
+                    disabled={isRunning}
+                    style={{ width: 'auto', cursor: 'pointer' }}
+                />
+                <label htmlFor="randomize" style={{ marginBottom: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <Dices size={16} /> Randomize Message Payload
+                </label>
+            </div>
+
+            <div className="input-group" style={{ opacity: formData.randomize ? 0.5 : 1, transition: 'opacity 0.2s' }}>
                 <label htmlFor="message">Message Payload</label>
                 <textarea
                     id="message"
                     name="message"
-                    placeholder="Type the message you want to blast..."
-                    value={formData.message}
+                    placeholder={formData.randomize ? "Random text will be generated automatically..." : "Type the message you want to blast..."}
+                    value={formData.randomize ? "" : formData.message}
                     onChange={handleChange}
-                    required
-                    disabled={isRunning}
+                    required={!formData.randomize}
+                    disabled={isRunning || formData.randomize}
                 />
             </div>
 

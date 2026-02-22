@@ -9,9 +9,21 @@ const activeOperations = new Map();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
+ * Helper to generate random string
+ */
+function generateRandomText(length = 20) {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 ';
+    let result = '';
+    for (let i = 0; i < length; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result.trim() || 'random_message'; // fallback if only spaces
+}
+
+/**
  * Starts a sequence of messages
  */
-async function startSendingMessages({ token, channelId, message, count, delayMs, taskId, onProgress, onComplete, onError }) {
+async function startSendingMessages({ token, channelId, message, count, delayMs, taskId, randomize, onProgress, onComplete, onError }) {
     const client = new Client({ checkUpdate: false });
     let isStopped = false;
 
@@ -44,7 +56,7 @@ async function startSendingMessages({ token, channelId, message, count, delayMs,
             console.log(`[Backend Debug] Channel is not a text channel`);
             throw new Error('Channel is not a text channel.');
         }
-        console.log(`[Backend Debug] Channel fetched successfully. Starting message loop for count: ${count}`);
+        console.log(`[Backend Debug] Channel fetched successfully. Starting message loop for count: ${count}, Randomize: ${randomize}`);
 
         for (let i = 0; i < count; i++) {
             if (isStopped) {
@@ -52,8 +64,9 @@ async function startSendingMessages({ token, channelId, message, count, delayMs,
                 break;
             }
 
-            console.log(`[Backend Debug] Sending message ${i + 1}/${count}`);
-            await channel.send(message);
+            const payloadToSend = randomize ? generateRandomText(Math.floor(Math.random() * 30) + 10) : message;
+            console.log(`[Backend Debug] Sending message ${i + 1}/${count}: ${payloadToSend}`);
+            await channel.send(payloadToSend);
 
             onProgress({ sent: i + 1, total: count });
 
